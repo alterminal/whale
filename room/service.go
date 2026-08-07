@@ -592,6 +592,96 @@ func (s *Service) MaxStreamPosition() int64 {
 }
 
 // ---------------------------------------------------------------------------
+// Redact, state, forget
+// ---------------------------------------------------------------------------
+
+// RedactEvent creates a redaction event (m.room.redaction) for the target event.
+func (s *Service) RedactEvent(senderID, roomID, eventID, reason string) (string, error) {
+	var target storage.Event
+	if err := s.DB.Where("event_id = ? AND room_id = ?", eventID, roomID).First(&target).Error; err != nil {
+		return "", fmt.Errorf("target event not found: %w", err)
+	}
+
+	newEventID := generateEventID(s.ServerName)
+	originTS := time.Now().UnixMilli()
+
+	content := storage.EventContent{
+		Reason: reason,
+		Raw:    storage.JSONMap{"reason": reason},
+	}
+
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var maxDepth int64
+		tx.Model(&storage.Event{}).Where("room_id = ?", roomID).
+			Select("COALESCE(MAX(depth), 0)").Scan(&maxDepth)
+		depth := maxDepth + 1
+
+		ev := s.newEvent(roomID, senderID, "m.room.redaction", "", content, originTS, depth, nil, nil)
+		ev.EventID = newEventID
+		ev.Redacts = eventID
+		return tx.Create(&ev).Error
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create redaction: %w", err)
+	}
+
+	// Mark original event as redacted
+	s.DB.Model(&storage.Event{}).Where("event_id = ?", eventID).
+		Update("unsigned", storage.JSONMap{"redacted_because": map[string]interface{}{
+			"event_id": newEventID,
+			"reason":   reason,
+			"sender":   senderID,
+		}})
+
+	return newEventID, nil
+}
+
+// SetStateEvent directly sets a state event in a room.
+func (s *Service) SetStateEvent(roomID, senderID, eventType, stateKey string, contentJSON []byte) (string, error) {
+	eventID := generateEventID(s.ServerName)
+	originTS := time.Now().UnixMilli()
+
+	content := storage.EventContent{
+		Raw: storage.JSONMap{"content": string(contentJSON)},
+	}
+
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var maxDepth int64
+		tx.Model(&storage.Event{}).Where("room_id = ?", roomID).
+			Select("COALESCE(MAX(depth), 0)").Scan(&maxDepth)
+		depth := maxDepth + 1
+
+		ev := s.newEvent(roomID, senderID, eventType, stateKey, content, originTS, depth, nil, nil)
+		ev.EventID = eventID
+		if err := tx.Create(&ev).Error; err != nil {
+			return err
+		}
+
+		// Update current room state
+		cs := storage.CurrentRoomState{
+			RoomID:    roomID,
+			EventType: eventType,
+			StateKey:  stateKey,
+			EventID:   eventID,
+			Content:   storage.JSONMap{"content": string(contentJSON)},
+		}
+		return tx.Where("room_id = ? AND event_type = ? AND state_key = ?", roomID, eventType, stateKey).
+			Assign(cs).FirstOrCreate(&cs).Error
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return eventID, nil
+}
+
+// ForgetRoom removes a user's membership entirely (after leaving).
+func (s *Service) ForgetRoom(userID, roomID string) error {
+	return s.DB.Where("room_id = ? AND user_id = ?", roomID, userID).
+		Delete(&storage.RoomMembership{}).Error
+}
+
+// ---------------------------------------------------------------------------
 // Event construction helpers
 // ---------------------------------------------------------------------------
 

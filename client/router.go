@@ -106,7 +106,10 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	auth.POST("/register", h.Register)
 	auth.POST("/logout", h.Logout, h.AuthRequired())
 	auth.POST("/logout/all", h.LogoutAll, h.AuthRequired())
+	auth.POST("/refresh", h.RefreshToken) // unauthenticated (uses refresh token)
 	auth.GET("/account/whoami", h.WhoAmI, h.AuthRequired())
+	auth.POST("/account/password", h.ChangePassword, h.AuthRequired())
+	auth.POST("/account/deactivate", h.DeactivateAccount, h.AuthRequired())
 
 	// -- Rooms --
 	auth.POST("/createRoom", h.CreateRoom, h.AuthRequired())
@@ -115,6 +118,10 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	auth.PUT("/directory/room/:roomAlias", h.PutRoomAlias, h.AuthRequired())
 	auth.DELETE("/directory/room/:roomAlias", h.DeleteRoomAlias, h.AuthRequired())
 
+	// Directory list (visibility)
+	auth.PUT("/directory/list/room/:roomId", h.SetRoomVisibility, h.AuthRequired())
+	auth.GET("/directory/list/room/:roomId", h.GetRoomVisibility, h.AuthRequired())
+
 	rooms := auth.Group("/rooms/:roomId")
 	rooms.POST("/join", h.JoinRoom, h.AuthRequired())
 	rooms.POST("/leave", h.LeaveRoom, h.AuthRequired())
@@ -122,12 +129,34 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	rooms.POST("/kick", h.KickUser, h.AuthRequired())
 	rooms.POST("/ban", h.BanUser, h.AuthRequired())
 	rooms.POST("/unban", h.UnbanUser, h.AuthRequired())
+	rooms.POST("/forget", h.ForgetRoom, h.AuthRequired())
+	rooms.POST("/upgrade", h.UpgradeRoom, h.AuthRequired())
+	rooms.POST("/report/:eventId", h.ReportEvent, h.AuthRequired())
 	rooms.GET("/state", h.GetRoomState, h.AuthRequired())
 	rooms.GET("/state/:eventType", h.GetRoomStateByType, h.AuthRequired())
 	rooms.GET("/state/:eventType/:stateKey", h.GetRoomStateByTypeAndKey, h.AuthRequired())
+	rooms.PUT("/state/:eventType/:stateKey", h.SetRoomState, h.AuthRequired())
 	rooms.PUT("/send/:eventType/:txnId", h.SendEvent, h.AuthRequired())
+	rooms.PUT("/redact/:eventId/:txnId", h.RedactEvent, h.AuthRequired())
 	rooms.GET("/messages", h.GetMessages, h.AuthRequired())
 	rooms.GET("/members", h.GetMembers, h.AuthRequired())
+	rooms.GET("/joined_members", h.GetJoinedMembers, h.AuthRequired())
+	rooms.GET("/event/:eventId", h.GetEvent, h.AuthRequired())
+	rooms.GET("/context/:eventId", h.GetEventContext, h.AuthRequired())
+	rooms.PUT("/typing/:userId", h.SendTyping, h.AuthRequired())
+	rooms.POST("/receipt/:receiptType/:eventId", h.SendReceipt, h.AuthRequired())
+	rooms.POST("/read_markers", h.SetReadMarkers, h.AuthRequired())
+
+	// -- Relations / Threads (stub for now) --
+	rooms.GET("/relations/:eventId", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]interface{}{"chunk": []interface{}{}})
+	}, h.AuthRequired())
+	rooms.GET("/relations/:eventId/:relType", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]interface{}{"chunk": []interface{}{}})
+	}, h.AuthRequired())
+	rooms.GET("/threads", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]interface{}{"chunk": []interface{}{}})
+	}, h.AuthRequired())
 
 	// -- Sync --
 	auth.GET("/sync", h.Sync, h.AuthRequired())
@@ -139,9 +168,20 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	auth.GET("/profile/:userId/avatar_url", h.GetAvatarURL, h.AuthRequired())
 	auth.PUT("/profile/:userId/avatar_url", h.SetAvatarURL, h.AuthRequired())
 
+	// -- Account Data --
+	auth.GET("/user/:userId/account_data/:type", h.GetAccountData, h.AuthRequired())
+	auth.PUT("/user/:userId/account_data/:type", h.PutAccountData, h.AuthRequired())
+	auth.GET("/user/:userId/rooms/:roomId/account_data/:type", h.GetRoomAccountData, h.AuthRequired())
+	auth.PUT("/user/:userId/rooms/:roomId/account_data/:type", h.PutRoomAccountData, h.AuthRequired())
+
 	// -- Filters --
 	auth.POST("/user/:userId/filter", h.CreateFilter, h.AuthRequired())
 	auth.GET("/user/:userId/filter/:filterId", h.GetFilter, h.AuthRequired())
+
+	// -- Room Tags --
+	auth.GET("/user/:userId/rooms/:roomId/tags", h.GetRoomTags, h.AuthRequired())
+	auth.PUT("/user/:userId/rooms/:roomId/tags/:tag", h.PutRoomTag, h.AuthRequired())
+	auth.DELETE("/user/:userId/rooms/:roomId/tags/:tag", h.DeleteRoomTag, h.AuthRequired())
 
 	// -- E2EE Keys --
 	auth.POST("/keys/upload", h.UploadKeys, h.AuthRequired())
@@ -153,7 +193,53 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	auth.GET("/presence/:userId/status", h.GetPresence, h.AuthRequired())
 
 	// -- Media --
-	auth.POST("/media/upload", h.UploadMedia, h.AuthRequired())
+	auth.POST("/media/upload", h.UploadMediaEnhanced, h.AuthRequired())
+	g.GET("/media/download/:serverName/:mediaId", h.DownloadMedia) // may be accessed without auth
+	g.GET("/media/thumbnail/:serverName/:mediaId", h.ThumbnailMedia)
+	auth.GET("/media/config", h.MediaConfig)
+	auth.GET("/media/preview_url", h.PreviewURL, h.AuthRequired())
+
+	// -- Devices --
+	auth.GET("/devices", h.GetDevices, h.AuthRequired())
+	auth.GET("/devices/:deviceId", h.GetDevice, h.AuthRequired())
+	auth.PUT("/devices/:deviceId", h.UpdateDevice, h.AuthRequired())
+	auth.DELETE("/devices/:deviceId", h.DeleteDevice, h.AuthRequired())
+	auth.POST("/delete_devices", h.DeleteDevices, h.AuthRequired())
+
+	// -- Search --
+	auth.POST("/search", h.Search, h.AuthRequired())
+
+	// -- Public Rooms --
+	auth.GET("/publicRooms", h.GetPublicRooms)
+	auth.POST("/publicRooms", h.PostPublicRooms, h.AuthRequired())
+
+	// -- Knock --
+	auth.POST("/knock/:roomIdOrAlias", h.KnockRoom, h.AuthRequired())
+
+	// -- VoIP --
+	auth.GET("/voip/turnServer", h.TurnServer, h.AuthRequired())
+
+	// -- OpenID --
+	auth.POST("/user/:userId/openid/request_token", h.OpenIDToken, h.AuthRequired())
+
+	// -- Push Notifications --
+	auth.POST("/pushers/set", h.SetPusher, h.AuthRequired())
+	auth.GET("/pushers", h.GetPushers, h.AuthRequired())
+	auth.GET("/notifications", h.GetNotifications, h.AuthRequired())
+
+	// -- Push Rules --
+	auth.GET("/pushrules/", h.GetPushRules, h.AuthRequired())
+	auth.GET("/pushrules/:scope/:kind/:ruleId", h.GetPushRule, h.AuthRequired())
+	auth.PUT("/pushrules/:scope/:kind/:ruleId", h.PutPushRule, h.AuthRequired())
+	auth.DELETE("/pushrules/:scope/:kind/:ruleId", h.DeletePushRule, h.AuthRequired())
+	auth.PUT("/pushrules/:scope/:kind/:ruleId/enabled", h.SetPushRuleEnabled, h.AuthRequired())
+	auth.PUT("/pushrules/:scope/:kind/:ruleId/actions", h.SetPushRuleActions, h.AuthRequired())
+
+	// -- Third-party --
+	auth.GET("/thirdparty/protocols", h.GetThirdPartyProtocols, h.AuthRequired())
+	auth.GET("/thirdparty/protocol/:protocol", h.GetThirdPartyProtocol, h.AuthRequired())
+	auth.GET("/thirdparty/location", h.GetThirdPartyLocation, h.AuthRequired())
+	auth.GET("/thirdparty/user", h.GetThirdPartyUser, h.AuthRequired())
 }
 
 // RegisterWellKnown mounts the /.well-known/matrix/* discovery endpoints

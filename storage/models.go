@@ -796,6 +796,27 @@ func (RateLimit) TableName() string {
 }
 
 // ===========================================================================
+// Room tags
+// ===========================================================================
+
+// RoomTag stores user-defined tags on rooms (e.g., "m.favourite", "m.lowpriority").
+//
+// Matrix spec: https://spec.matrix.org/latest/client-server-api/#room-tags
+type RoomTag struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement" json:"-"`
+	UserID    string    `gorm:"index:idx_room_tag,unique;size:255;not null" json:"user_id"`
+	RoomID    string    `gorm:"index:idx_room_tag,unique;size:255;not null" json:"room_id"`
+	Tag       string    `gorm:"index:idx_room_tag,unique;size:128;not null" json:"tag"`
+	Order     JSONMap   `gorm:"type:jsonb" json:"order,omitempty"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (RoomTag) TableName() string {
+	return "room_tags"
+}
+
+// ===========================================================================
 // Auto-migration helper
 // ===========================================================================
 
@@ -836,5 +857,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&PushRule{},
 		&Pusher{},
 		&RateLimit{},
+		&RoomTag{},
 	)
 }

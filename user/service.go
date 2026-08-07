@@ -279,6 +279,138 @@ func (s *Service) SetAvatarURL(userID, avatarURL string) error {
 }
 
 // ---------------------------------------------------------------------------
+// Password & account management
+// ---------------------------------------------------------------------------
+
+// ChangePassword updates the user's password and optionally revokes other tokens.
+func (s *Service) ChangePassword(userID, newPassword string, logoutDevices bool) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&storage.User{}).Where("user_id = ?", userID).
+			Updates(map[string]interface{}{
+				"password_hash":   string(hash),
+				"password_scheme": "bcrypt",
+			}).Error; err != nil {
+			return err
+		}
+
+		if logoutDevices {
+			return tx.Where("user_id = ?", userID).Delete(&storage.AccessToken{}).Error
+		}
+		return nil
+	})
+}
+
+// DeactivateAccount marks the user account as deactivated.
+func (s *Service) DeactivateAccount(userID string, erase bool) error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&storage.User{}).Where("user_id = ?", userID).
+			Update("deactivated", true).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", userID).Delete(&storage.AccessToken{}).Error; err != nil {
+			return err
+		}
+		tx.Where("user_id = ?", userID).Delete(&storage.RefreshToken{})
+		if erase {
+			tx.Model(&storage.User{}).Where("user_id = ?", userID).
+				Updates(map[string]interface{}{
+					"display_name": "",
+					"avatar_url":   "",
+				})
+		}
+		return nil
+	})
+}
+
+// RefreshAccessToken issues a new access token from a valid refresh token.
+func (s *Service) RefreshAccessToken(refreshToken string) (*LoginResult, error) {
+	var rt storage.RefreshToken
+	if err := s.DB.Where("token = ? AND used = false", refreshToken).First(&rt).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("invalid or expired refresh token")
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+
+	if rt.ExpiresAt != nil && time.Now().After(*rt.ExpiresAt) {
+		return nil, errors.New("refresh token expired")
+	}
+
+	var at storage.AccessToken
+	if err := s.DB.Where("id = ?", rt.AccessTokenID).First(&at).Error; err != nil {
+		return nil, fmt.Errorf("access token not found: %w", err)
+	}
+
+	// Mark refresh token as used
+	s.DB.Model(&rt).Update("used", true)
+
+	return s.issueLogin(at.UserID, at.DeviceID, "")
+}
+
+// ---------------------------------------------------------------------------
+// Device management
+// ---------------------------------------------------------------------------
+
+// GetDevices returns all devices for a user.
+func (s *Service) GetDevices(userID string) ([]storage.Device, error) {
+	var devices []storage.Device
+	err := s.DB.Where("user_id = ?", userID).Find(&devices).Error
+	return devices, err
+}
+
+// GetDevice returns a single device.
+func (s *Service) GetDevice(userID, deviceID string) (*storage.Device, error) {
+	var device storage.Device
+	if err := s.DB.Where("user_id = ? AND device_id = ?", userID, deviceID).First(&device).Error; err != nil {
+		return nil, err
+	}
+	return &device, nil
+}
+
+// UpdateDevice updates a device's display name.
+func (s *Service) UpdateDevice(userID, deviceID, displayName string) error {
+	return s.DB.Model(&storage.Device{}).
+		Where("user_id = ? AND device_id = ?", userID, deviceID).
+		Update("display_name", displayName).Error
+}
+
+// DeleteDevice deletes a device and its associated tokens.
+func (s *Service) DeleteDevice(userID, deviceID, currentToken string) error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ? AND device_id = ?", userID, deviceID).
+			Delete(&storage.AccessToken{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("user_id = ? AND device_id = ?", userID, deviceID).
+			Delete(&storage.Device{}).Error
+	})
+}
+
+// DeleteDevices deletes multiple devices and their associated tokens.
+func (s *Service) DeleteDevices(userID string, deviceIDs []string, currentToken string) error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		var currentAT storage.AccessToken
+		tx.Where("token = ?", currentToken).First(&currentAT)
+
+		for _, deviceID := range deviceIDs {
+			if currentAT.DeviceID == deviceID {
+				continue // Don't delete own device
+			}
+			tx.Where("user_id = ? AND device_id = ?", userID, deviceID).
+				Delete(&storage.AccessToken{})
+			tx.Where("user_id = ? AND device_id = ?", userID, deviceID).
+				Delete(&storage.Device{})
+		}
+		return nil
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
