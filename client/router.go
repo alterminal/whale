@@ -102,6 +102,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 
 	// -- Auth endpoints --
 	auth := g.Group("/client/v3")
+	auth.GET("/login", h.GetLoginFlows)
 	auth.POST("/login", h.Login)
 	auth.POST("/register", h.Register)
 	auth.POST("/logout", h.Logout, h.AuthRequired())

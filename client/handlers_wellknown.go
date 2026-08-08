@@ -117,7 +117,7 @@ func (h *Handler) resolveClientBaseURL(c echo.Context) string {
 	}
 
 	// Auto-detect from the incoming request.
-	scheme := "https"
+	scheme := "http"
 	if c.IsTLS() {
 		scheme = "https"
 	}

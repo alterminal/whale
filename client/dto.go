@@ -68,6 +68,15 @@ type WellKnownBaseURL struct {
 	BaseURL string `json:"base_url"`
 }
 
+// LoginFlowsResponse is returned by GET /login to advertise supported auth flows.
+type LoginFlowsResponse struct {
+	Flows []LoginFlow `json:"flows"`
+}
+
+type LoginFlow struct {
+	Type string `json:"type"`
+}
+
 // ---------------------------------------------------------------------------
 // Register
 // ---------------------------------------------------------------------------

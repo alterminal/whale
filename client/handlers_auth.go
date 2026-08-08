@@ -41,6 +41,25 @@ func (h *Handler) Capabilities(c echo.Context) error {
 }
 
 // =========================================================================
+// GET /_matrix/client/v3/login
+// =========================================================================
+//
+// Returns the supported login flows per Matrix spec:
+// https://spec.matrix.org/latest/client-server-api/#get_matrixclientv3login
+//
+// Element X and other clients use this to discover available authentication
+// methods before attempting to log in.
+
+func (h *Handler) GetLoginFlows(c echo.Context) error {
+	return c.JSON(http.StatusOK, LoginFlowsResponse{
+		Flows: []LoginFlow{
+			{Type: "m.login.password"},
+			{Type: "m.login.token"},
+		},
+	})
+}
+
+// =========================================================================
 // POST /_matrix/client/v3/login
 // =========================================================================
 
