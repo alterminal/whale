@@ -5,6 +5,11 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"whale/storage"
 )
@@ -25,9 +30,9 @@ type Federation struct {
 
 // Config is the top-level Whale configuration.
 type Config struct {
-	Server     Server          `yaml:"server"`
-	Database   storage.Config  `yaml:"database"`
-	Federation Federation      `yaml:"federation"`
+	Server     Server         `yaml:"server"`
+	Database   storage.Config `yaml:"database"`
+	Federation Federation     `yaml:"federation"`
 }
 
 // Default returns a Config with sensible development defaults.
@@ -88,5 +93,112 @@ func DefaultPath() string {
 	if err != nil {
 		return "config.yaml"
 	}
-	return home + "/.whale/config.yaml"
+	return filepath.Join(home, ".config", "whale", "config.yaml")
+}
+
+// LoadYAML reads and parses a YAML config file. Non-zero fields in the file
+// override the defaults; missing fields keep their default values.
+func LoadYAML(path string) (Config, error) {
+	cfg := Default()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return cfg, err
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return cfg, fmt.Errorf("config: failed to parse %s: %w", path, err)
+	}
+	return cfg, nil
+}
+
+// MergeYAML overlays non-zero values from src onto dst and returns the result.
+// Only fields that are explicitly set (non-zero) in src will override dst.
+func MergeYAML(dst, src Config) Config {
+	if src.Server.Name != "" {
+		dst.Server.Name = src.Server.Name
+	}
+	if src.Server.Port != 0 {
+		dst.Server.Port = src.Server.Port
+	}
+	if src.Server.Domain != "" {
+		dst.Server.Domain = src.Server.Domain
+	}
+	if src.Database.Driver != "" {
+		dst.Database.Driver = src.Database.Driver
+	}
+	if src.Database.DSN != "" {
+		dst.Database.DSN = src.Database.DSN
+	}
+	if src.Federation.Port != 0 {
+		dst.Federation.Port = src.Federation.Port
+	}
+	// Federation.Enabled: if src has it as false, respect that (only override if src is explicitly true).
+	// Since false is the zero value for bool, we can't distinguish "not set" from "set to false".
+	// We always take src.Enabled — YAML 'enabled: false' is treated as explicit.
+	// To keep it simple: overlay Enabled unconditionally if the YAML was loaded.
+	dst.Federation.Enabled = src.Federation.Enabled
+	if src.Federation.Bind != "" {
+		dst.Federation.Bind = src.Federation.Bind
+	}
+	return dst
+}
+
+// LoadDotEnv parses a .env file and returns key-value pairs.
+// Supports:
+//   - KEY=VALUE
+//   - KEY="VALUE" / KEY='VALUE'
+//   - # comments
+//   - blank lines
+func LoadDotEnv(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]string)
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		// Strip surrounding quotes
+		if (strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"")) ||
+			(strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'")) {
+			value = value[1 : len(value)-1]
+		}
+		result[key] = value
+	}
+	return result, nil
+}
+
+// ApplyDotEnv applies values from a .env map onto the Config.
+// Supported keys:
+//   - WHALE_DATABASE_DSN
+//   - WHALE_DATABASE_DRIVER
+//   - WHALE_SERVER_NAME
+//   - WHALE_SERVER_PORT
+//   - WHALE_SERVER_DOMAIN
+func (c *Config) ApplyDotEnv(env map[string]string) {
+	if v, ok := env["WHALE_DATABASE_DSN"]; ok {
+		c.Database.DSN = v
+	}
+	if v, ok := env["WHALE_DATABASE_DRIVER"]; ok {
+		c.Database.Driver = v
+	}
+	if v, ok := env["WHALE_SERVER_NAME"]; ok {
+		c.Server.Name = v
+	}
+	if v, ok := env["WHALE_SERVER_PORT"]; ok {
+		if p, err := strconv.Atoi(v); err == nil {
+			c.Server.Port = p
+		}
+	}
+	if v, ok := env["WHALE_SERVER_DOMAIN"]; ok {
+		c.Server.Domain = v
+	}
 }

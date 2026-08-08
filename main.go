@@ -16,16 +16,45 @@ import (
 func main() {
 	fmt.Println("🐋 Whale — Matrix homeserver")
 
-	// Load configuration
+	// -------------------------------------------------------------------
+	// Configuration loading order (last loaded wins):
+	//   1. Hardcoded defaults
+	//   2. Environment variables     (lowest priority)
+	//   3. ~/.config/whale/config.yaml
+	//   4. .env file                (highest priority)
+	// -------------------------------------------------------------------
 	cfg := config.Default()
-	if err := cfg.Validate(); err != nil {
-		log.Fatalf("invalid configuration: %v", err)
-	}
+
+	// Layer 2: environment variables
 	if dsn := os.Getenv("WHALE_DATABASE_DSN"); dsn != "" {
 		cfg.Database.DSN = dsn
 	}
 	if driver := os.Getenv("WHALE_DATABASE_DRIVER"); driver != "" {
 		cfg.Database.Driver = driver
+	}
+	if name := os.Getenv("WHALE_SERVER_NAME"); name != "" {
+		cfg.Server.Name = name
+	}
+	if domain := os.Getenv("WHALE_SERVER_DOMAIN"); domain != "" {
+		cfg.Server.Domain = domain
+	}
+
+	// Layer 3: YAML config file
+	if yamlCfg, err := config.LoadYAML(config.DefaultPath()); err == nil {
+		cfg = config.MergeYAML(cfg, yamlCfg)
+		fmt.Printf("📄 Loaded config: %s\n", config.DefaultPath())
+	} else {
+		fmt.Printf("ℹ️  No config file at %s (using env/defaults)\n", config.DefaultPath())
+	}
+
+	// Layer 4: .env file (highest priority)
+	if envMap, err := config.LoadDotEnv(".env"); err == nil {
+		cfg.ApplyDotEnv(envMap)
+		fmt.Println("📄 Loaded .env (highest priority)")
+	}
+
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid configuration: %v", err)
 	}
 
 	// Open database
