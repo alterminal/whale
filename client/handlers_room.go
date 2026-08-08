@@ -233,7 +233,7 @@ func (h *Handler) GetMembers(c echo.Context) error {
 // =========================================================================
 
 func (h *Handler) GetRoomAlias(c echo.Context) error {
-	alias := "#" + Param(c, "roomAlias") + ":" + h.ServerName
+	alias := "#" + Param(c, "roomAlias") + ":" + h.Domain
 
 	var ra storage.RoomAlias
 	if err := h.DB.Where("alias = ?", alias).First(&ra).Error; err != nil {
@@ -245,12 +245,12 @@ func (h *Handler) GetRoomAlias(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, RoomAliasResponse{
 		RoomID:  ra.RoomID,
-		Servers: []string{h.ServerName},
+		Servers: []string{h.Domain},
 	})
 }
 
 func (h *Handler) PutRoomAlias(c echo.Context) error {
-	alias := "#" + Param(c, "roomAlias") + ":" + h.ServerName
+	alias := "#" + Param(c, "roomAlias") + ":" + h.Domain
 	userID := GetUserID(c)
 
 	var req RoomAliasRequest
@@ -267,8 +267,8 @@ func (h *Handler) PutRoomAlias(c echo.Context) error {
 	}
 
 	// Verify the alias starts with our server name
-	if !strings.HasSuffix(strings.TrimPrefix(alias, "#"), ":"+h.ServerName) {
-		return h.ErrorResponse(c, http.StatusBadRequest, ErrInvalidParam, "Alias must end with :"+h.ServerName)
+	if !strings.HasSuffix(strings.TrimPrefix(alias, "#"), ":"+h.Domain) {
+		return h.ErrorResponse(c, http.StatusBadRequest, ErrInvalidParam, "Alias must end with :"+h.Domain)
 	}
 
 	ra := storage.RoomAlias{Alias: alias, RoomID: req.RoomID, Creator: userID}
@@ -280,7 +280,7 @@ func (h *Handler) PutRoomAlias(c echo.Context) error {
 }
 
 func (h *Handler) DeleteRoomAlias(c echo.Context) error {
-	alias := "#" + Param(c, "roomAlias") + ":" + h.ServerName
+	alias := "#" + Param(c, "roomAlias") + ":" + h.Domain
 	userID := GetUserID(c)
 
 	var ra storage.RoomAlias

@@ -79,7 +79,7 @@ func main() {
 	// -------------------------------------------------------------------
 	// Client-Server API handler
 	// -------------------------------------------------------------------
-	h := client.NewHandler(db, cfg.Server.Name)
+	h := client.NewHandler(db, cfg.Server.Name, cfg.Server.Domain)
 
 	// Configure .well-known discovery
 	h.WellKnownCfg = client.WellKnownConfig{

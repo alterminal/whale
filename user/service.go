@@ -19,7 +19,8 @@ import (
 // Service wraps the database and server configuration for user operations.
 type Service struct {
 	DB         *gorm.DB
-	ServerName string // e.g., "matrix.example.com"
+	ServerName string // e.g., "matrix.example.com" (hostname, for HomeServer field)
+	Domain     string // e.g., "example.com" (MXID domain part)
 }
 
 // RegisterParams holds the validated registration request.
@@ -85,7 +86,7 @@ func (s *Service) Register(params RegisterParams) (*LoginResult, error) {
 		return nil, err
 	}
 
-	userID := fmt.Sprintf("@%s:%s", localpart, s.ServerName)
+	userID := fmt.Sprintf("@%s:%s", localpart, s.Domain)
 
 	// Check uniqueness
 	var existing storage.User
@@ -435,13 +436,13 @@ func (s *Service) resolveUser(user string, identifier *UserIdentifier) (string, 
 			localpart, domain = parts[0], parts[1]
 		} else {
 			localpart = user
-			domain = s.ServerName
+			domain = s.Domain
 		}
 	} else {
 		return "", errors.New("identifier or user is required")
 	}
 
-	if domain != s.ServerName {
+	if domain != s.Domain {
 		return "", fmt.Errorf("cannot log in as user from domain %s", domain)
 	}
 

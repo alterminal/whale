@@ -19,6 +19,7 @@ import (
 type Service struct {
 	DB         *gorm.DB
 	ServerName string
+	Domain     string // MXID domain part for room IDs, event IDs, and aliases
 }
 
 // CreateRoomParams holds the request to create a new room.
@@ -60,7 +61,7 @@ func (s *Service) CreateRoom(params CreateRoomParams) (*CreateRoomResult, error)
 		return nil, errors.New("creator is required")
 	}
 
-	roomID := generateRoomID(s.ServerName)
+	roomID := generateRoomID(s.Domain)
 	now := time.Now()
 	originTS := now.UnixMilli()
 
@@ -187,7 +188,7 @@ func (s *Service) CreateRoom(params CreateRoomParams) (*CreateRoomResult, error)
 
 		// 9. Room alias (if requested)
 		if params.RoomAlias != "" {
-			alias := fmt.Sprintf("#%s:%s", strings.TrimPrefix(params.RoomAlias, "#"), s.ServerName)
+			alias := fmt.Sprintf("#%s:%s", strings.TrimPrefix(params.RoomAlias, "#"), s.Domain)
 			roomAlias := storage.RoomAlias{
 				Alias:   alias,
 				RoomID:  roomID,
@@ -276,7 +277,7 @@ func (s *Service) JoinRoom(userID, roomID string) (string, error) {
 		return roomID, nil
 	}
 
-	eventID := generateEventID(s.ServerName)
+	eventID := generateEventID(s.Domain)
 	originTS := time.Now().UnixMilli()
 
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
@@ -336,7 +337,7 @@ func (s *Service) InviteUser(roomID, senderID, targetID, reason string) (*Invite
 		return nil, fmt.Errorf("sender %s is not a member of room %s", senderID, roomID)
 	}
 
-	eventID := generateEventID(s.ServerName)
+	eventID := generateEventID(s.Domain)
 	originTS := time.Now().UnixMilli()
 
 	err := s.DB.Transaction(func(tx *gorm.DB) error {
@@ -402,7 +403,7 @@ func (s *Service) UnbanUser(senderID, roomID, targetID string) error {
 
 // setMembership is the internal helper for changing membership state.
 func (s *Service) setMembership(userID, roomID, membership, reason string) error {
-	eventID := generateEventID(s.ServerName)
+	eventID := generateEventID(s.Domain)
 	originTS := time.Now().UnixMilli()
 
 	return s.DB.Transaction(func(tx *gorm.DB) error {
@@ -454,7 +455,7 @@ func (s *Service) SendMessage(roomID, senderID, msgType, body, formattedBody, fo
 		return "", fmt.Errorf("user %s is not joined to room %s", senderID, roomID)
 	}
 
-	eventID := generateEventID(s.ServerName)
+	eventID := generateEventID(s.Domain)
 	originTS := time.Now().UnixMilli()
 
 	content := storage.EventContent{
@@ -602,7 +603,7 @@ func (s *Service) RedactEvent(senderID, roomID, eventID, reason string) (string,
 		return "", fmt.Errorf("target event not found: %w", err)
 	}
 
-	newEventID := generateEventID(s.ServerName)
+	newEventID := generateEventID(s.Domain)
 	originTS := time.Now().UnixMilli()
 
 	content := storage.EventContent{
@@ -638,7 +639,7 @@ func (s *Service) RedactEvent(senderID, roomID, eventID, reason string) (string,
 
 // SetStateEvent directly sets a state event in a room.
 func (s *Service) SetStateEvent(roomID, senderID, eventType, stateKey string, contentJSON []byte) (string, error) {
-	eventID := generateEventID(s.ServerName)
+	eventID := generateEventID(s.Domain)
 	originTS := time.Now().UnixMilli()
 
 	content := storage.EventContent{
@@ -692,7 +693,7 @@ func (s *Service) newEvent(roomID, sender, eventType, stateKey string, content s
 		stateKeyPtr = &stateKey
 	}
 
-	eventID := generateEventID(s.ServerName)
+	eventID := generateEventID(s.Domain)
 
 	return storage.Event{
 		EventID:        eventID,

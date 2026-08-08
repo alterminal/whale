@@ -45,6 +45,7 @@ type Handler struct {
 	UserSvc       *user.Service
 	RoomSvc       *room.Service
 	ServerName    string
+	Domain        string // MXID domain part (e.g., "alterminal.com")
 	WellKnownCfg  WellKnownConfig
 }
 
@@ -78,12 +79,13 @@ type WellKnownConfig struct {
 }
 
 // NewHandler creates a Handler with all services wired up.
-func NewHandler(db *gorm.DB, serverName string) *Handler {
+func NewHandler(db *gorm.DB, serverName, domain string) *Handler {
 	return &Handler{
 		DB:         db,
-		UserSvc:    &user.Service{DB: db, ServerName: serverName},
-		RoomSvc:    &room.Service{DB: db, ServerName: serverName},
+		UserSvc:    &user.Service{DB: db, ServerName: serverName, Domain: domain},
+		RoomSvc:    &room.Service{DB: db, ServerName: serverName, Domain: domain},
 		ServerName: serverName,
+		Domain:     domain,
 	}
 }
 
