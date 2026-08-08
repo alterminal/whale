@@ -44,6 +44,7 @@ func OpenDB(cfg Config) (*gorm.DB, error) {
 	}
 
 	db, err := gorm.Open(dialector, &gorm.Config{
+		DisableForeignKeyConstraintWhenMigrating: true,
 		Logger: logger.New(
 			log.New(os.Stderr, "[gorm] ", log.LstdFlags),
 			logger.Config{

@@ -177,9 +177,6 @@ type AccessToken struct {
 	Token     string    `gorm:"uniqueIndex;size:512;not null" json:"token"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-
-	// Association
-	User User `gorm:"foreignKey:UserID;references:UserID" json:"-"`
 }
 
 func (AccessToken) TableName() string {

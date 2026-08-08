@@ -45,7 +45,7 @@ func Default() Config {
 		},
 		Database: storage.Config{
 			Driver: "postgres",
-			DSN:    "host=localhost user=whale_dev password=ZFmwJxYISdaJpIuI0VJ8 dbname=whale_dev port=5432 sslmode=disable",
+			DSN:    "host=localhost user=postgres password=postgres dbname=whale_dev port=5432 sslmode=disable",
 		},
 		Federation: Federation{
 			Enabled: true,
