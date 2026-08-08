@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -63,8 +64,15 @@ func (h *Handler) JoinRoom(c echo.Context) error {
 	roomID := Param(c, "roomId")
 	userID := GetUserID(c)
 
+	// Body is optional per spec — decode manually instead of using
+	// BindJSON, which writes an error response on empty/malformed
+	// bodies and causes a double-write when we continue below.
 	var req JoinRequest
-	BindJSON(c, &req) // optional body, ignore errors
+	if c.Request().Body != nil && c.Request().ContentLength > 0 {
+		// Best-effort: ignore decode errors, body shape is not critical.
+		json.NewDecoder(c.Request().Body).Decode(&req)
+	}
+	_ = req // reserved for future use (e.g., reason, third_party_signed)
 
 	_, err := h.RoomSvc.JoinRoom(userID, roomID)
 	if err != nil {

@@ -269,13 +269,13 @@ func (s *Service) GetProfile(userID string) (*Profile, error) {
 // SetDisplayName updates the user's display name.
 func (s *Service) SetDisplayName(userID, displayName string) error {
 	return s.DB.Model(&storage.User{}).Where("user_id = ?", userID).
-		Update("display_name", displayName).Error
+		UpdateColumn("display_name", displayName).Error
 }
 
 // SetAvatarURL updates the user's avatar URL.
 func (s *Service) SetAvatarURL(userID, avatarURL string) error {
 	return s.DB.Model(&storage.User{}).Where("user_id = ?", userID).
-		Update("avatar_url", avatarURL).Error
+		UpdateColumn("avatar_url", avatarURL).Error
 }
 
 // ---------------------------------------------------------------------------
