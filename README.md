@@ -41,8 +41,8 @@ server:
   domain: "localhost"
 
 database:
-  driver: "sqlite3"
-  dsn: "whale.db"
+  driver: "postgres"
+  dsn: "host=localhost user=whale_dev password=your_password dbname=whale_dev port=5432 sslmode=disable"
 
 federation:
   enabled: true
